@@ -4,9 +4,11 @@ import TextInput from 'ink-text-input'
 import { loadConfig, type Message } from '../config/index.js'
 import { runQuery } from '../query/index.js'
 import { createREPLState } from '../repl/index.js'
+import { processCommand } from '../commands/index.js'
+import { getContextStats } from '../memory/index.js'
 
 interface Props { initialPrompt?: string }
-interface Entry { type: 'user' | 'assistant' | 'tool' | 'error' | 'system'; content: string }
+interface Entry { type: 'user' | 'assistant' | 'tool' | 'error' | 'system' | 'command'; content: string }
 
 const P = '> '
 
@@ -21,6 +23,16 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
 
   const submit = useCallback(async (text: string) => {
     if (!text.trim()) return
+
+    // Check for slash commands
+    const cmd = processCommand(text.trim())
+    if (cmd) {
+      add({ type: 'command', content: cmd.content })
+      if (cmd.clearHistory) setMsgs([])
+      setInput('')
+      return
+    }
+
     add({ type: 'user', content: text }); setInput(''); setRunning(true); setTurn(0)
     try {
       const updated = await runQuery(text, config, [...msgs], {
@@ -39,18 +51,28 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
 
   return (
     <Box flexDirection="column">
-      <Box marginBottom={1}><Text bold color="cyan">{'🦞 codo '}</Text><Text dimColor>[{config.model}]</Text></Box>
+      <Box marginBottom={1}>
+        <Text bold color="cyan">{'🦞 codo '}</Text>
+        <Text dimColor>[{config.model}] </Text>
+        {msgs.length > 0 && <Text dimColor>({getContextStats(msgs)})</Text>}
+      </Box>
       {entries.map((e, i) => (
         <Box key={i} marginBottom={1}>
           {e.type === 'user' && <Box><Text color="green" bold>{P}</Text><Text>{e.content}</Text></Box>}
           {e.type === 'assistant' && <Box marginLeft={2}><Text>{e.content}</Text></Box>}
           {e.type === 'tool' && <Box marginLeft={2}><Text color="yellow">{'🔧 '}</Text><Text color="yellow">{e.content}</Text></Box>}
           {e.type === 'system' && <Box marginLeft={4}><Text dimColor>{e.content}</Text></Box>}
+          {e.type === 'command' && <Box marginLeft={2}><Text color="magenta">{e.content}</Text></Box>}
           {e.type === 'error' && <Box marginLeft={2}><Text color="red">{'❌ '}{e.content}</Text></Box>}
         </Box>
       ))}
       {running && turn > 1 && <Box marginLeft={2}><Text dimColor>{'⏳'} turn {turn}</Text></Box>}
-      {!running && <Box><Text color="green" bold>{P}</Text><TextInput value={input} onChange={setInput} onSubmit={submit} placeholder="Type your request..." /></Box>}
+      {!running && (
+        <Box>
+          <Text color="green" bold>{P}</Text>
+          <TextInput value={input} onChange={setInput} onSubmit={submit} placeholder="Type your request or /help..." />
+        </Box>
+      )}
     </Box>
   )
 }
