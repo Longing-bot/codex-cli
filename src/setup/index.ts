@@ -97,8 +97,14 @@ export async function ensureConfig(): Promise<CodoConfig> {
     config.baseUrl = config.baseUrl.replace(/\/$/, '')
     config.model = await ask(rl, '  模型名称（如 claude-sonnet-4-20250514, gpt-4o）: ')
     config.apiKey = await ask(rl, '  API Key: ')
-    const prov = await ask(rl, '  接口格式（openai / anthropic，默认 anthropic）: ')
-    config.provider = (prov || 'anthropic') as any
+    // 根据 URL 后缀自动判断接口格式
+    if (config.baseUrl.endsWith('/v1') || config.baseUrl.includes('/v1/')) {
+      config.provider = 'openai'
+      console.log('  📡 自动识别：OpenAI 格式（检测到 /v1）')
+    } else {
+      config.provider = 'anthropic'
+      console.log('  📡 自动识别：Anthropic 格式')
+    }
   } else {
     config.baseUrl = sel.base
     config.provider = sel.provider

@@ -61,8 +61,8 @@ export function hasApiKey(c: CodoConfig): boolean {
 }
 export function detectProvider(c: CodoConfig): string {
   if (c.provider) return c.provider
-  if (c.baseUrl.includes('anthropic') || c.baseUrl.includes('longcat')) return 'anthropic'
-  return 'openrouter'
+  if (c.baseUrl.endsWith('/v1') || c.baseUrl.includes('/v1/')) return 'openai'
+  return 'anthropic'
 }
 
 // ─── Environment (CC pattern) ─────────────────────────────────────────
