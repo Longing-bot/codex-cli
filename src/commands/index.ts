@@ -10,11 +10,14 @@ export interface CommandResult {
 
 const COMMANDS = [
   { name: 'help', aliases: ['h', '?'], desc: 'Show available commands',
-    exec: () => ({ type: 'info', content: `🦞 codo commands:\n  /help (?/)      Show this help\n  /clear          Clear conversation\n  /history        Show message count\n  /quit (q/)      Exit` }) },
+    exec: () => ({ type: 'info', content: `🦞 codo commands:\n  /help (?/)      Show this help\n  /clear          Clear conversation\n  /history        Show message count\n  /compact       Compact conversation
+  /quit (q/)      Exit` }) },
   { name: 'clear', desc: 'Clear conversation history',
     exec: () => { const f = getSessionFile(); if (existsSync(f)) unlinkSync(f); return { type: 'action', content: '🗑️ Cleared.', clearHistory: true } } },
   { name: 'history', desc: 'Show history stats',
     exec: () => { const m = loadSession(); return { type: 'info', content: `📜 ${m.length} messages (${m.filter(x => x.role === 'user').length} user, ${m.filter(x => x.role === 'tool').length} tool)` } } },
+  { name: 'compact', desc: 'Summarize conversation to save context',
+    exec: () => ({ type: 'action', content: '📝 Use --print "/compact" to trigger compaction, or let codo auto-compact when context is large.' }) },
   { name: 'quit', aliases: ['q', 'exit'], desc: 'Exit',
     exec: () => { process.exit(0); return { type: 'info', content: '' } } },
 ] as const
