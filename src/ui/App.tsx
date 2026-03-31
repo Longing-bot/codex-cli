@@ -36,7 +36,16 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
     add({ type: 'user', content: text }); setInput(''); setRunning(true); setTurn(0)
     try {
       const updated = await runQuery(text, config, [...msgs], {
-        onText: t => add({ type: 'assistant', content: t }),
+        onToken: t => {
+          // 流式追加到最后一个 assistant entry
+          setEntries(prev => {
+            const last = prev[prev.length - 1]
+            if (last?.type === 'assistant') {
+              return [...prev.slice(0, -1), { ...last, content: last.content + t }]
+            }
+            return [...prev, { type: 'assistant', content: t }]
+          })
+        },
         onToolStart: (n, a) => add({ type: 'tool', content: `${n}(${a.length > 40 ? a.slice(0, 40) + '...' : a})` }),
         onToolResult: (_, r) => add({ type: 'system', content: `  -> ${r.content.split('\n')[0].slice(0, 60)}` }),
         onTurn: t => setTurn(t),
