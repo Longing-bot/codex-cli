@@ -7,10 +7,11 @@ import { createREPLState } from '../repl/index.js'
 import { processCommand } from '../commands/index.js'
 import { getContextStats } from '../memory/index.js'
 import { PermissionDialog } from './components/PermissionDialog.js'
+import { computeDiff, type DiffLine } from './diff.js'
 
 interface Props { initialPrompt?: string }
 
-type EntryType = 'user' | 'assistant' | 'tool' | 'toolResult' | 'error' | 'system' | 'command' | 'permission'
+type EntryType = 'user' | 'assistant' | 'tool' | 'toolResult' | 'error' | 'system' | 'command' | 'permission' | 'diff'
 interface Entry {
   type: EntryType
   content: string
@@ -79,6 +80,10 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
   // 权限审批状态
   const [pendingTool, setPendingTool] = useState<{ name: string; args: string } | null>(null)
   const [toolResolve, setToolResolve] = useState<((value: boolean) => void) | null>(null)
+  // 输入历史
+  const [history, setHistory] = useState<string[]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
+  const [savedInput, setSavedInput] = useState('')
 
   const add = useCallback((e: Entry) => setEntries(p => [...p, { ...e, timestamp: Date.now() }]), [])
 
@@ -95,6 +100,8 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
 
     add({ type: 'user', content: text })
     setInput('')
+    setHistory(h => [text, ...h].slice(0, 50))
+    setHistoryIndex(-1)
     setRunning(true)
     setTurn(0)
     setTurnStart(Date.now())
@@ -121,10 +128,34 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
         onToolResult: (n, r) => {
           // CC 风格：树状缩进 ⎿
           const lines = r.content.split('\n')
-          const firstLine = lines[0].slice(0, 70)
-          add({ type: 'toolResult', content: firstLine || '(空输出)' })
-          // 如果输出有多行，显示行数
-          if (lines.length > 1) {
+
+          // 文件编辑：显示 diff
+          if (n === 'edit_file' && !r.isError) {
+            // 显示修改行数摘要
+            const changeCount = lines.filter(l => l.startsWith('+') || l.startsWith('-')).length
+            add({ type: 'toolResult', content: `已修改 (${Math.floor(changeCount / 2)} 处变更)` })
+          }
+          // 文件读取：显示行号
+          else if (n === 'read_file' && !r.isError && lines.length > 1) {
+            // 带行号显示（CC 风格）
+            const numbered = lines.slice(0, 8).map((l, i) => `${String(i + 1).padStart(4)}→${l}`).join('\n')
+            add({ type: 'toolResult', content: numbered.split('\n')[0] })
+            if (lines.length > 8) {
+              add({ type: 'system', content: `… (${lines.length} 行，已截断)` })
+            }
+          }
+          // Bash：分离 stdout/stderr
+          else if (n === 'bash' && !r.isError) {
+            const firstLine = lines[0].slice(0, 70)
+            add({ type: 'toolResult', content: firstLine || '(空输出)' })
+          }
+          else {
+            const firstLine = lines[0].slice(0, 70)
+            add({ type: 'toolResult', content: firstLine || '(空输出)' })
+          }
+
+          // 多行输出行数提示
+          if (lines.length > 1 && n !== 'read_file') {
             add({ type: 'system', content: `(${lines.length} 行输出)` })
           }
         },
@@ -157,6 +188,24 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
 
   useInput((input, key) => {
     if (key.ctrl && input === 'c' && running) setRunning(false)
+    // 输入历史（↑↓ 箭头，CC 风格）
+    if (key.upArrow && !running && !pendingTool) {
+      if (historyIndex === -1) setSavedInput(input)
+      const next = Math.min(historyIndex + 1, history.length - 1)
+      if (next >= 0) {
+        setHistoryIndex(next)
+        setInput(history[next])
+      }
+    }
+    if (key.downArrow && !running && !pendingTool) {
+      if (historyIndex > 0) {
+        setHistoryIndex(historyIndex - 1)
+        setInput(history[historyIndex - 1])
+      } else if (historyIndex === 0) {
+        setHistoryIndex(-1)
+        setInput(savedInput)
+      }
+    }
   })
 
   useEffect(() => { if (initialPrompt) submit(initialPrompt) }, [])
