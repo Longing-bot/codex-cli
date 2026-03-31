@@ -10,6 +10,7 @@ import { CodoConfig, Message, saveSession } from '../config/index.js'
 import { callLLM } from '../api/index.js'
 import { findTool, toOpenAI, toAnthropic, ToolResult } from '../tools/index.js'
 import { buildSystemPrompt } from '../prompts/system.js'
+import { preToolValidate, postToolProcess } from '../hooks/index.js'
 
 const MAX_TURNS = 80
 
@@ -75,8 +76,17 @@ export async function runQuery(
       if (!tool) {
         result = { content: `Error: Unknown tool: ${tc.function.name}`, isError: true }
       } else {
-        try { result = await tool.execute(JSON.parse(tc.function.arguments)) }
-        catch (ex: any) { result = { content: `Error: ${ex.message}`, isError: true } }
+        // CC pattern: PreToolUse validation
+        const args = JSON.parse(tc.function.arguments)
+        const preCheck = preToolValidate(tc.function.name, args)
+        if (!preCheck.allowed) {
+          result = { content: `Error: ${preCheck.reason}`, isError: true }
+        } else {
+          try { result = await tool.execute(args) }
+          catch (ex: any) { result = { content: `Error: ${ex.message}`, isError: true } }
+          // CC pattern: PostToolUse processing
+          result = postToolProcess(tc.function.name, result)
+        }
       }
 
       onToolResult?.(tc.function.name, result)
