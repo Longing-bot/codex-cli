@@ -239,42 +239,42 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
 
       {/* Messages */}
       {entries.map((e, i) => (
-        <Box key={i} marginBottom={e.type === 'assistant' ? 0 : 1}>
+        <Box key={i} marginBottom={0}>
           {/* User message */}
           {e.type === 'user' && (
             <Box>
-              <Text color="green" bold>❯ </Text>
-              <Text>{e.content}</Text>
+              <Text color="blue">● </Text>
+              <Text bold>{e.content}</Text>
             </Box>
           )}
 
           {/* Assistant reply */}
           {e.type === 'assistant' && (
-            <Box marginLeft={2} marginBottom={1}>
+            <Box marginLeft={2}>
               <Text>{e.content}</Text>
             </Box>
           )}
 
-          {/* Tool call (CC style: ⏺ with command) */}
+          {/* Tool call */}
           {e.type === 'tool' && (
             <Box marginLeft={2}>
-              <Text color="yellow">⏺ </Text>
+              <Text color="blue">● </Text>
               <Text color="yellow">{e.content}</Text>
             </Box>
           )}
 
-          {/* Tool result (CC style: ⎿ tree) */}
+          {/* Tool result */}
           {e.type === 'toolResult' && (
-            <Box marginLeft={4}>
-              <Text dimColor>⎿  </Text>
+            <Box marginLeft={3}>
+              <Text dimColor>│ </Text>
               <Text dimColor>{e.content}</Text>
             </Box>
           )}
 
           {/* System message */}
           {e.type === 'system' && (
-            <Box marginLeft={4}>
-              <Text dimColor>   {e.content}</Text>
+            <Box marginLeft={3}>
+              <Text dimColor>│ {e.content}</Text>
             </Box>
           )}
 
@@ -288,7 +288,7 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
           {/* Error */}
           {e.type === 'error' && (
             <Box marginLeft={2}>
-              <Text color="red">✗ </Text>
+              <Text color="red">● </Text>
               <Text color="red">{e.content}</Text>
             </Box>
           )}
