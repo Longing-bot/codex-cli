@@ -16,11 +16,91 @@ export interface CodoConfig {
   autoApprove: boolean
 }
 
+// ─── Token Usage ────────────────────────────────────────────────────
+export interface TokenUsage {
+  input_tokens: number
+  output_tokens: number
+  cache_creation_input_tokens: number
+  cache_read_input_tokens: number
+}
+
+// 按模型的定价（美元 / 1M tokens）
+export const MODEL_PRICING: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  'claude-sonnet-4-20250514':          { input: 3.0,   output: 15.0,  cacheRead: 0.3,  cacheWrite: 3.75 },
+  'claude-3-7-sonnet-20250219':        { input: 3.0,   output: 15.0,  cacheRead: 0.3,  cacheWrite: 3.75 },
+  'claude-haiku-4-5-20251001':         { input: 0.80,  output: 4.0,   cacheRead: 0.08, cacheWrite: 1.0 },
+  'claude-3-5-haiku-20241022':         { input: 0.80,  output: 4.0,   cacheRead: 0.08, cacheWrite: 1.0 },
+  'claude-3-opus-20240229':            { input: 15.0,  output: 75.0,  cacheRead: 1.5,  cacheWrite: 18.75 },
+  'gpt-4o':                            { input: 2.5,   output: 10.0,  cacheRead: 1.25, cacheWrite: 2.5 },
+  'gpt-4o-mini':                       { input: 0.15,  output: 0.60,  cacheRead: 0.075,cacheWrite: 0.15 },
+  'gpt-4-turbo':                       { input: 10.0,  output: 30.0,  cacheRead: 10.0, cacheWrite: 10.0 },
+  'gpt-4':                             { input: 30.0,  output: 60.0,  cacheRead: 30.0, cacheWrite: 30.0 },
+  'gpt-3.5-turbo':                     { input: 0.50,  output: 1.50,  cacheRead: 0.50, cacheWrite: 0.50 },
+  'LongCat-Flash-Thinking-2601':       { input: 0.0,   output: 0.0,   cacheRead: 0.0,  cacheWrite: 0.0 },
+}
+
+export function estimateCost(usage: TokenUsage, model: string): number {
+  const pricing = MODEL_PRICING[model]
+  if (!pricing) return 0
+  return (
+    (usage.input_tokens / 1_000_000) * pricing.input +
+    (usage.output_tokens / 1_000_000) * pricing.output +
+    (usage.cache_read_input_tokens / 1_000_000) * pricing.cacheRead +
+    (usage.cache_creation_input_tokens / 1_000_000) * pricing.cacheWrite
+  )
+}
+
+export function formatUsd(amount: number): string {
+  if (amount === 0) return '$0.00'
+  if (amount < 0.01) return `$${amount.toFixed(4)}`
+  return `$${amount.toFixed(2)}`
+}
+
+export class UsageTracker {
+  private _currentTurn: TokenUsage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
+  private _total: TokenUsage = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
+  private _turnCount = 0
+
+  recordTurn(usage: TokenUsage) {
+    this._currentTurn = { ...usage }
+    this._total = {
+      input_tokens: this._total.input_tokens + usage.input_tokens,
+      output_tokens: this._total.output_tokens + usage.output_tokens,
+      cache_creation_input_tokens: this._total.cache_creation_input_tokens + usage.cache_creation_input_tokens,
+      cache_read_input_tokens: this._total.cache_read_input_tokens + usage.cache_read_input_tokens,
+    }
+    this._turnCount++
+  }
+
+  get currentTurn(): TokenUsage { return this._currentTurn }
+  get total(): TokenUsage { return this._total }
+  get turnCount(): number { return this._turnCount }
+
+  getSummary(model: string): string {
+    const turnCost = estimateCost(this._currentTurn, model)
+    const totalCost = estimateCost(this._total, model)
+    const lines = [
+      `📊 本轮: ${this._currentTurn.input_tokens}→${this._currentTurn.output_tokens} tok  缓存读:${this._currentTurn.cache_read_input_tokens}  ${formatUsd(turnCost)}`,
+      `📊 累计: ${this._total.input_tokens}→${this._total.output_tokens} tok (${this._turnCount} 轮)  ${formatUsd(totalCost)}`,
+    ]
+    return lines.join('\n')
+  }
+}
+
+// 全局 usage tracker 单例
+let globalTracker: UsageTracker | null = null
+export function getUsageTracker(): UsageTracker {
+  if (!globalTracker) globalTracker = new UsageTracker()
+  return globalTracker
+}
+
+// ─── Message ────────────────────────────────────────────────────────
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
   tool_calls?: ToolCall[]
   tool_call_id?: string
+  usage?: TokenUsage  // 可选的 token 用量字段
 }
 
 export interface ToolCall {
@@ -109,13 +189,32 @@ export function loadMemory(): string {
 }
 
 // ─── Session ───────────────────────────────────────────────────────────
+export const SESSION_VERSION = 1
+
+export interface SessionData {
+  version: number
+  messages: Message[]
+}
+
 export function getSessionFile(): string {
   mkdirSync(HISTORY_DIR, { recursive: true })
   return join(HISTORY_DIR, createHash('md5').update(process.cwd()).digest('hex').slice(0, 12) + '.json')
 }
 export function loadSession(): Message[] {
   const f = getSessionFile()
-  if (existsSync(f)) { try { return JSON.parse(readFileSync(f, "utf-8")) } catch(_e) {} }
+  if (existsSync(f)) {
+    try {
+      const raw = JSON.parse(readFileSync(f, "utf-8"))
+      // 向后兼容：旧格式是纯数组
+      if (Array.isArray(raw)) return raw
+      // 新格式：{ version, messages }
+      if (raw.version && Array.isArray(raw.messages)) return raw.messages
+      return []
+    } catch(_e) {}
+  }
   return []
 }
-export function saveSession(msgs: Message[]) { writeFileSync(getSessionFile(), JSON.stringify(msgs.slice(-40), null, 2)) }
+export function saveSession(msgs: Message[]) {
+  const data: SessionData = { version: SESSION_VERSION, messages: msgs.slice(-40) }
+  writeFileSync(getSessionFile(), JSON.stringify(data, null, 2))
+}

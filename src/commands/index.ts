@@ -1,9 +1,10 @@
 // ─── 命令系统（CC commands.ts 风格）────────────────────────────────────────
 import { existsSync, unlinkSync, readFileSync, writeFileSync } from 'fs'
-import { getSessionFile, saveSession, loadSession, loadConfig, saveConfig, type Message } from '../config/index.js'
+import { getSessionFile, saveSession, loadSession, loadConfig, saveConfig, getUsageTracker, type Message } from '../config/index.js'
 import { getCompactionRequest } from '../memory/compact.js'
 import { getExecPolicy, setExecPolicy } from '../hooks/policy.js'
 import { consolidateMemory, recordSession, shouldConsolidate } from '../memory/dream.js'
+import { getPermissionLevel, setPermissionLevel, listPermissions, PERMISSION_NAMES, PermissionLevel } from '../permissions/index.js'
 
 export interface Command {
   name: string
@@ -39,9 +40,10 @@ const help: Command = {
   /compact           压缩上下文，保留摘要
   /history           查看消息统计
   /config            查看当前配置
+  /usage (cost/)     查看 token 用量和花费
   /model             切换/查看模型
   /think             切换深度思考模式
-  /policy            查看/切换执行策略
+  /policy            查看/切换权限模式和执行策略
   /agent             运行子代理执行任务
   /dream             整理记忆（自动整理）
   /resume            恢复上次对话
@@ -139,22 +141,47 @@ const think: Command = {
   },
 }
 
-// ─── /policy（Codex 风格：执行策略）─────────────────────────────────────
+// ─── /usage ────────────────────────────────────────────────────────────
+const usage: Command = {
+  name: 'usage',
+  description: '查看 token 用量和花费',
+  aliases: ['cost', 'tokens'],
+  execute: () => {
+    const tracker = getUsageTracker()
+    const config = loadConfig()
+    if (tracker.turnCount === 0) {
+      return { type: 'info', content: '📊 暂无用量数据。发送一条消息后即可查看。' }
+    }
+    return { type: 'info', content: tracker.getSummary(config.model) }
+  },
+}
+
+// ─── /policy（权限模式 + 执行策略）────────────────────────────────────
 const policy: Command = {
   name: 'policy',
-  description: '查看/切换执行策略',
+  description: '查看/切换权限模式或执行策略',
   aliases: [],
-  argumentHint: '<unless-trusted|on-failure|on-request|never>',
+  argumentHint: '<ReadOnly|WorkspaceWrite|DangerFullAccess|Prompt|Allow | unless-trusted|on-failure|on-request|never>',
   execute: (args) => {
     if (!args) {
-      return { type: 'info', content: `当前执行策略: ${getExecPolicy()}\n\n策略说明:\n  unless-trusted  信任命令自动执行，其他需要审批（默认）\n  on-failure      失败时才需要审批\n  on-request      每次都需要审批\n  never           从不审批\n\n用法: /policy <策略名称>` }
+      const permLevel = getPermissionLevel()
+      const execPolicy = getExecPolicy()
+      return {
+        type: 'info',
+        content: `权限模式: ${PERMISSION_NAMES[permLevel]}\n执行策略: ${execPolicy}\n\n${listPermissions()}\n\n用法:\n  /policy ReadOnly|WorkspaceWrite|DangerFullAccess|Prompt|Allow\n  /policy unless-trusted|on-failure|on-request|never`,
+      }
     }
-    const valid = ['unless-trusted', 'on-failure', 'on-request', 'never']
-    if (!valid.includes(args)) {
-      return { type: 'error', content: `无效策略。可选: ${valid.join(', ')}` }
+    // 先尝试权限等级
+    if (setPermissionLevel(args)) {
+      return { type: 'action', content: `✅ 权限模式已切换到: ${args}` }
     }
-    setExecPolicy(args as any)
-    return { type: 'action', content: `✅ 执行策略已切换到: ${args}` }
+    // 再尝试执行策略
+    const validPolicies = ['unless-trusted', 'on-failure', 'on-request', 'never']
+    if (validPolicies.includes(args)) {
+      setExecPolicy(args as any)
+      return { type: 'action', content: `✅ 执行策略已切换到: ${args}` }
+    }
+    return { type: 'error', content: `无效参数。可选: ${Object.values(PERMISSION_NAMES).join(', ')} 或 ${validPolicies.join(', ')}` }
   },
 }
 
@@ -211,7 +238,7 @@ const quit: Command = {
 }
 
 // ─── 注册表 ────────────────────────────────────────────────────────────
-const COMMANDS: Command[] = [help, clear, compact, history, config, model, think, policy, agent, dream, resume, quit]
+const COMMANDS: Command[] = [help, clear, compact, history, config, usage, model, think, policy, agent, dream, resume, quit]
 
 export function processCommand(input: string, context: CommandContext): CommandResult | Promise<CommandResult> | null {
   if (!input.startsWith('/')) return null

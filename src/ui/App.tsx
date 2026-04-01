@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
-import { loadConfig, saveConfig, loadSession, type Message } from '../config/index.js'
+import { loadConfig, saveConfig, loadSession, getUsageTracker, formatUsd, estimateCost, type Message, type TokenUsage } from '../config/index.js'
 import { runQuery } from '../query/index.js'
 import { createREPLState } from '../repl/index.js'
 import { processCommand } from '../commands/index.js'
@@ -188,6 +188,15 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
         onTurn: t => {
           setTurn(t)
           setTurnStart(Date.now())
+        },
+        onUsage: (usage: TokenUsage, model: string) => {
+          // 每轮结束显示用量信息
+          const turnCost = estimateCost(usage, model)
+          const tracker = getUsageTracker()
+          add({
+            type: 'system',
+            content: `📊 tok: ${usage.input_tokens}→${usage.output_tokens}  缓存读:${usage.cache_read_input_tokens}  ${formatUsd(turnCost)} (累计 ${formatUsd(estimateCost(tracker.total, model))})`,
+          })
         },
         onError: e => add({ type: 'error', content: e }),
       })

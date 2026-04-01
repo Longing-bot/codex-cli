@@ -81,6 +81,27 @@ export function shouldCompact(messages: Message[], maxTokens: number = 80000): b
   return estimateMessageTokens(messages) > maxTokens
 }
 
+// CC pattern: automatic compaction - keep last 4 messages + summary
+export function autoCompactMessages(messages: Message[]): Message[] {
+  if (messages.length < 6) return messages // too short to compact
+
+  // Keep system prompt (first message) + last 4 messages
+  const systemMsg = messages[0]
+  const recent = messages.slice(-4)
+
+  // Generate a summary placeholder from the middle messages
+  const middle = messages.slice(1, -4)
+  const userMsgs = middle.filter(m => m.role === 'user')
+  const toolCalls = middle.filter(m => m.role === 'tool')
+  const summary = `[自动压缩] 之前 ${middle.length} 条消息已压缩。包含 ${userMsgs.length} 条用户消息和 ${toolCalls.length} 次工具调用。`
+
+  return [
+    systemMsg,
+    { role: 'user', content: `<conversation_summary>\n${summary}\n</conversation_summary>\n\nBased on the summary above, continue where we left off.` },
+    ...recent,
+  ]
+}
+
 // CC pattern: get the compaction request messages
 export function getCompactionRequest(messages: Message[]): Message[] {
   return [

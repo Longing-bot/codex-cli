@@ -26,7 +26,7 @@ const SAFE = ['ls','pwd','date','whoami','id','env','echo','which','test','true'
   'curl -s','wget -q','ssh -V','scp','rsync --dry','ps aux','top -l','kill -l','lsof','netstat','ss','ip addr',
   'python3 -c','python -c','pytest','jest','vitest','make','cmake']
 
-// ─── Tools ─────────────────────────────────────────────────────────────
+// ─── Core Tools ────────────────────────────────────────────────────────
 export const readFileTool: ToolDef = {
   name: 'read_file',
   description: 'Read file contents with line numbers. Use offset/limit for large files. DO NOT use bash cat for reading files.',
@@ -142,6 +142,7 @@ export const grepTool: ToolDef = {
   }
 }
 
+// ─── Lazy Tools ────────────────────────────────────────────────────────
 export const fetchTool: ToolDef = {
   name: 'fetch',
   description: 'Fetch URL and return text content. NOT for local files (use read_file).',
@@ -156,14 +157,125 @@ export const fetchTool: ToolDef = {
   }
 }
 
-// ─── 新增工具（CC 风格）────────────────────────────────────────────────
 import { todoTool } from './todo.js'
 import { webSearchTool } from './websearch.js'
 
-export const ALL_TOOLS = [readFileTool, writeFileTool, editFileTool, bashTool, globTool, grepTool, fetchTool, todoTool, webSearchTool]
+// ─── Agent Tool (Sub-agent) ────────────────────────────────────────────
+import { runSubAgent } from '../agent/subagent.js'
+
+export const agentTool: ToolDef = {
+  name: 'agent',
+  description: `Launch a sub-agent to execute a task in an isolated context.
+Sub-agents have their own session and token budget.
+Result is returned when the sub-agent completes.
+
+subagent_type:
+  - Explore: read-only tools only (glob, grep, read_file, fetch, web_search)
+  - Plan: planning and analysis tools
+  - Verification: read + bash for verification
+  - general-purpose: all tools`,
+  parameters: {
+    type: 'object',
+    properties: {
+      description: { type: 'string', description: 'Short description of the task' },
+      prompt: { type: 'string', description: 'Full prompt for the sub-agent' },
+      subagent_type: { type: 'string', enum: ['Explore', 'Plan', 'Verification', 'general-purpose'], default: 'general-purpose' },
+      name: { type: 'string', description: 'Optional name for the sub-agent' },
+      model: { type: 'string', description: 'Optional model override' },
+    },
+    required: ['description', 'prompt'],
+  },
+  async execute(args: Record<string, any>) {
+    const { description, prompt, subagent_type, name, model } = args
+
+    const toolWhitelist: Record<string, string[]> = {
+      'Explore': ['read_file', 'glob', 'grep', 'fetch', 'web_search'],
+      'Plan': ['read_file', 'glob', 'grep', 'fetch', 'web_search', 'todo_write'],
+      'Verification': ['read_file', 'glob', 'grep', 'bash'],
+      'general-purpose': [],  // empty = all tools
+    }
+
+    const allowedTools = toolWhitelist[subagent_type] || []
+
+    try {
+      const config = (await import('../config/index.js')).loadConfig()
+      const result = await runSubAgent({
+        task: prompt,
+        maxTurns: subagent_type === 'Explore' ? 15 : 10,
+        allowedTools: allowedTools.length > 0 ? allowedTools : undefined,
+        systemPromptSuffix: name ? `你是一个名为 "${name}" 的子代理。` : undefined,
+      }, model ? { ...config, model } : config)
+
+      // 写入结果到 .edgecli-agents/
+      const agentsDir = resolve(process.cwd(), '.edgecli-agents')
+      mkdirSync(agentsDir, { recursive: true })
+      const agentFile = resolve(agentsDir, `${name || 'agent'}-${Date.now()}.md`)
+      writeFileSync(agentFile, `# Agent: ${description}\n\nType: ${subagent_type}\n\n## Result\n\n${result.content}\n\n## Error\n\n${result.error || 'none'}\n`)
+
+      if (result.error) {
+        return { content: `🤖 子代理完成（${subagent_type}）: ${description}\n错误: ${result.error}\n结果已保存到 ${agentFile}`, isError: true }
+      }
+      return { content: `🤖 子代理完成（${subagent_type}）: ${description}\n\n${result.content}`, isError: false }
+    } catch (ex: any) {
+      return { content: `子代理执行失败: ${ex.message}`, isError: true }
+    }
+  },
+}
+
+// ─── ToolSearch Tool（延迟加载辅助）──────────────────────────────────────
+const ALL_TOOL_DEFS: ToolDef[] = [readFileTool, writeFileTool, editFileTool, bashTool, globTool, grepTool, fetchTool, todoTool, webSearchTool, agentTool]
+
+export const toolSearchTool: ToolDef = {
+  name: 'tool_search',
+  description: 'Search available tools by keyword. Use this to discover tools that are not in the core set.',
+  parameters: {
+    type: 'object',
+    properties: { query: { type: 'string', description: 'Search keywords' } },
+    required: ['query'],
+  },
+  execute({ query }) {
+    const q = query.toLowerCase()
+    const matches = ALL_TOOL_DEFS.filter(t =>
+      t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
+    )
+    if (!matches.length) return ok(`没有找到匹配 "${query}" 的工具。`)
+    return ok(matches.map(t => `- ${t.name}: ${t.description.split('\n')[0]}`).join('\n'))
+  },
+}
+
+// ─── 注册表 ────────────────────────────────────────────────────────────
+// 核心工具（始终注册）
+export const CORE_TOOLS: ToolDef[] = [readFileTool, writeFileTool, editFileTool, bashTool, globTool, grepTool]
+// 延迟工具（按需加载）
+export const LAZY_TOOLS: ToolDef[] = [fetchTool, todoTool, webSearchTool, agentTool, toolSearchTool]
+// 全部工具
+export const ALL_TOOLS: ToolDef[] = [...CORE_TOOLS, ...LAZY_TOOLS]
+
 export function findTool(n: string) { return ALL_TOOLS.find(t => t.name === n) }
-export function toOpenAI() { return ALL_TOOLS.map(t => ({ type: 'function' as const, function: { name: t.name, description: t.description, parameters: t.parameters } })) }
-export function toAnthropic() { return ALL_TOOLS.map(t => ({ name: t.name, description: t.description, input_schema: { type: 'object' as const, ...t.parameters } })) }
+
+// 按活跃工具集转换格式（核心 + 已激活的延迟工具）
+let activeLazyTools: Set<string> = new Set()
+
+export function activateLazyTool(name: string) {
+  activeLazyTools.add(name)
+}
+
+export function getActiveTools(): ToolDef[] {
+  const active = [...CORE_TOOLS]
+  for (const t of LAZY_TOOLS) {
+    if (activeLazyTools.has(t.name)) active.push(t)
+  }
+  return active
+}
+
+export function toOpenAI(active?: ToolDef[]) {
+  const tools = active || getActiveTools()
+  return tools.map(t => ({ type: 'function' as const, function: { name: t.name, description: t.description, parameters: t.parameters } }))
+}
+export function toAnthropic(active?: ToolDef[]) {
+  const tools = active || getActiveTools()
+  return tools.map(t => ({ name: t.name, description: t.description, input_schema: { type: 'object' as const, ...t.parameters } }))
+}
 
 // Alias for backward compatibility
 export type Tool = ToolDef

@@ -3,12 +3,13 @@ import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
 import type { ToolResult } from '../tools/index.js'
 import { evaluateExecution } from './policy.js'
+import { executeShellHook, HookEvent as ShellHookEvent } from './system.js'
 
 // ─── Hook 类型 ──────────────────────────────────────────────────────────
-export type HookEvent = 'PreToolUse' | 'PostToolUse' | 'PostToolUseFailure'
+export type HookEventType = 'PreToolUse' | 'PostToolUse' | 'PostToolUseFailure'
 
 export interface HookInput {
-  hook_event_name: HookEvent
+  hook_event_name: HookEventType
   tool_name: string
   tool_input: Record<string, any>
   tool_output?: string
@@ -17,7 +18,7 @@ export interface HookInput {
 
 export interface HookOutput {
   hookSpecificOutput?: {
-    hookEventName: HookEvent
+    hookEventName: HookEventType
     permissionBehavior?: 'allow' | 'deny' | 'ask'
     blockingMessage?: string
   }
@@ -78,6 +79,19 @@ export async function executePreToolHooks(
     }
   }
 
+  // 运行 shell hook（~/.edgecli/hooks/pre-tool-use.sh）
+  const shellResult = executeShellHook(ShellHookEvent.PreToolUse, {
+    toolName,
+    toolInput,
+  })
+  if (shellResult && !shellResult.allowed) {
+    return { allowed: false, reason: shellResult.message || `Shell hook 拒绝了 ${toolName}` }
+  }
+  if (shellResult?.message && shellResult.allowed) {
+    // 警告信息，附加到结果但不阻止
+    process.stderr.write(`\n${shellResult.message}\n`)
+  }
+
   return { allowed: true }
 }
 
@@ -110,6 +124,17 @@ export async function executePostToolHooks(
     if (output?.hookSpecificOutput?.blockingMessage) {
       return { ...result, content: output.hookSpecificOutput.blockingMessage }
     }
+  }
+
+  // 运行 shell hook（~/.edgecli/hooks/post-tool-use.sh）
+  const shellResult = executeShellHook(ShellHookEvent.PostToolUse, {
+    toolName,
+    toolInput,
+    toolOutput: result.content,
+    toolError: result.isError ? result.content : undefined,
+  })
+  if (shellResult?.message && !result.isError) {
+    return { ...result, content: result.content + '\n' + shellResult.message }
   }
 
   return result

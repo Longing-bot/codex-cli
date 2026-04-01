@@ -36,7 +36,7 @@ export function checkBudget(tracker: BudgetTracker, messages: any[], budget: num
 
   return { action: 'continue' }
 }
-export { COMPACT_PROMPT, buildCompactedMessages, shouldCompact, getCompactionRequest } from './compact.js'
+export { COMPACT_PROMPT, buildCompactedMessages, shouldCompact, getCompactionRequest, autoCompactMessages } from './compact.js'
 
 // Rough token estimation
 export function estimateTokens(text: string): number {
