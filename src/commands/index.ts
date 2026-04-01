@@ -3,6 +3,7 @@ import { existsSync, unlinkSync, readFileSync, writeFileSync } from 'fs'
 import { getSessionFile, saveSession, loadSession, loadConfig, saveConfig, type Message } from '../config/index.js'
 import { getCompactionRequest } from '../memory/compact.js'
 import { getExecPolicy, setExecPolicy } from '../hooks/policy.js'
+import { consolidateMemory, recordSession, shouldConsolidate } from '../memory/dream.js'
 
 export interface Command {
   name: string
@@ -42,6 +43,7 @@ const help: Command = {
   /think             切换深度思考模式
   /policy            查看/切换执行策略
   /agent             运行子代理执行任务
+  /dream             整理记忆（自动整理）
   /resume            恢复上次对话
   /quit (q/ exit/)   退出`,
   }),
@@ -170,6 +172,17 @@ const agent: Command = {
   },
 }
 
+// ─── /dream（CC 风格：后台记忆整理）─────────────────────────────────────
+const dream: Command = {
+  name: 'dream',
+  description: '整理记忆',
+  aliases: [],
+  execute: async () => {
+    const result = await consolidateMemory()
+    return { type: 'action', content: `🧠 ${result}` }
+  },
+}
+
 // ─── /resume（CC 风格：恢复上次对话）─────────────────────────────────────
 const resume: Command = {
   name: 'resume',
@@ -198,7 +211,7 @@ const quit: Command = {
 }
 
 // ─── 注册表 ────────────────────────────────────────────────────────────
-const COMMANDS: Command[] = [help, clear, compact, history, config, model, think, policy, agent, resume, quit]
+const COMMANDS: Command[] = [help, clear, compact, history, config, model, think, policy, agent, dream, resume, quit]
 
 export function processCommand(input: string, context: CommandContext): CommandResult | Promise<CommandResult> | null {
   if (!input.startsWith('/')) return null
