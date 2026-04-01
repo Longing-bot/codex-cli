@@ -330,6 +330,8 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
         <Box marginTop={1} borderTop borderColor="gray" borderStyle="single" paddingLeft={1}>
           <Text dimColor>{config.model}</Text>
           <Text dimColor> · </Text>
+          <Text dimColor>{getContextStats(msgs)}</Text>
+          <Text dimColor> · </Text>
           <Text dimColor>/help</Text>
           <Text dimColor> · </Text>
           <Text dimColor>/clear</Text>
