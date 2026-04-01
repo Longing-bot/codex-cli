@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Text, useInput } from 'ink'
 import TextInput from 'ink-text-input'
-import { loadConfig, type Message } from '../config/index.js'
+import { loadConfig, saveConfig, type Message } from '../config/index.js'
 import { runQuery } from '../query/index.js'
 import { createREPLState } from '../repl/index.js'
 import { processCommand } from '../commands/index.js'
@@ -88,6 +88,8 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
   const [history, setHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [savedInput, setSavedInput] = useState('')
+  // 多行输入（CC 风格）
+  const [multiline, setMultiline] = useState(false)
 
   const add = useCallback((e: Entry) => setEntries(p => [...p, { ...e, timestamp: Date.now() }]), [])
 
@@ -212,6 +214,11 @@ export const App: React.FC<Props> = ({ initialPrompt }) => {
         setHistoryIndex(-1)
         setInput(savedInput)
       }
+    }
+    // Shift+Enter = 新行（CC 多行输入）
+    if (key.shift && key.return && !running && !pendingTool) {
+      setInput(prev => prev + '\n')
+      setMultiline(true)
     }
   })
 

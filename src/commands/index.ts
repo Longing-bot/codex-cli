@@ -123,6 +123,24 @@ const resume: Command = {
   },
 }
 
+// ─── /model（CC 风格：切换模型）─────────────────────────────────────────
+const model: Command = {
+  name: 'model',
+  description: '切换模型',
+  aliases: [],
+  argumentHint: '<模型名称>',
+  execute: (args) => {
+    if (!args) {
+      const c = loadConfig()
+      return { type: 'info', content: `当前模型: ${c.model}\n用法: /model <模型名称>` }
+    }
+    const c = loadConfig()
+    c.model = args
+    saveConfig(c)
+    return { type: 'action', content: `✅ 已切换到: ${args}` }
+  },
+}
+
 // ─── /quit ─────────────────────────────────────────────────────────────
 const quit: Command = {
   name: 'quit',
@@ -132,7 +150,7 @@ const quit: Command = {
 }
 
 // ─── 注册表 ────────────────────────────────────────────────────────────
-const COMMANDS: Command[] = [help, clear, compact, history, config, resume, quit]
+const COMMANDS: Command[] = [help, clear, compact, history, config, model, resume, quit]
 
 export function processCommand(input: string, context: CommandContext): CommandResult | Promise<CommandResult> | null {
   if (!input.startsWith('/')) return null

@@ -3,7 +3,7 @@ import { CodoConfig, Message, detectProvider, saveSession } from '../config/inde
 import { callLLM } from '../api/index.js'
 import { findTool, toOpenAI, toAnthropic, ToolResult } from '../tools/index.js'
 import { buildSystemPrompt } from '../prompts/system.js'
-import { preToolValidate, postToolProcess } from '../hooks/index.js'
+import { executePreToolHooks, executePostToolHooks } from '../hooks/index.js'
 import { createBudgetTracker, checkBudget } from '../memory/index.js'
 
 const MAX_TURNS = 80
@@ -79,13 +79,13 @@ export async function runQuery(
         result = { content: `未知工具: ${tc.function.name}`, isError: true }
       } else {
         const args = JSON.parse(tc.function.arguments)
-        const preCheck = preToolValidate(tc.function.name, args)
+        const preCheck = await executePreToolHooks(tc.function.name, args)
         if (!preCheck.allowed) {
           result = { content: preCheck.reason!, isError: true }
         } else {
           try { result = await tool.execute(args) }
           catch (ex: any) { result = { content: ex.message, isError: true } }
-          result = postToolProcess(tc.function.name, result)
+          result = await executePostToolHooks(tc.function.name, args, result)
         }
       }
 
