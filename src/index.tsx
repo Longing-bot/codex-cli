@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // ─── Entry Point ──────────────────────────────────────────────────────────
 import React from 'react'
 import { render } from 'ink'
