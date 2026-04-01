@@ -32,7 +32,7 @@ export interface ToolCall {
 const DIR = join(homedir(), '.edgecli')
 const CONFIG_FILE = join(DIR, 'config.json')
 const HISTORY_DIR = join(DIR, 'history')
-const MEMORY_FILES = ['CLAUDE.md', 'AGENTS.md', '.edgecli.md', 'OpenCode.md']
+const MEMORY_FILES = ['EDGECLI.md', 'AGENTS.md', '.edgecli.md', 'OpenCode.md']
 
 const DEFAULT: CodoConfig = {
   apiKey: '', baseUrl: 'https://api.longcat.chat/anthropic',
@@ -95,7 +95,7 @@ ${tree}
 </project_files>`
 }
 
-// ─── Memory (CC pattern: auto-load CLAUDE.md etc.) ────────────────────
+// ─── Memory (CC pattern: auto-load EDGECLI.md etc.) ────────────────────
 export function loadMemory(): string {
   const cwd = process.cwd()
   const parts: string[] = []

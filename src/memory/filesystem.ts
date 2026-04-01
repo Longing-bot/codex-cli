@@ -1,4 +1,4 @@
-// ─── 记忆文件系统（CC CLAUDE.md + MEMORY.md 风格）──────────────────────────
+// ─── 记忆文件系统（CC EDGECLI.md + MEMORY.md 风格）──────────────────────────
 import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync } from 'fs'
 import { join, resolve, dirname } from 'path'
 import { homedir } from 'os'
@@ -6,7 +6,7 @@ import { homedir } from 'os'
 // CC 加载顺序（优先级从低到高）
 const MEMORY_FILES = [
   // 用户级
-  { path: join(homedir(), '.edgecli', 'CLAUDE.md'), name: '用户级' },
+  { path: join(homedir(), '.edgecli', 'EDGECLI.md'), name: '用户级' },
   { path: join(homedir(), '.edgecli', 'MEMORY.md'), name: '用户记忆' },
   // 项目级（向上查找）
 ]
@@ -36,17 +36,17 @@ function truncateMemory(content: string): string {
   return result
 }
 
-// 查找项目级 CLAUDE.md（从当前目录向上）
+// 查找项目级 EDGECLI.md（从当前目录向上）
 function findProjectMemory(cwd: string): string | null {
   let dir = cwd
   while (true) {
-    const projectPath = join(dir, 'CLAUDE.md')
+    const projectPath = join(dir, 'EDGECLI.md')
     if (existsSync(projectPath)) return projectPath
 
-    const localPath = join(dir, 'CLAUDE.local.md')
+    const localPath = join(dir, 'EDGECLI.local.md')
     if (existsSync(localPath)) return localPath
 
-    const edgecliPath = join(dir, '.edgecli', 'CLAUDE.md')
+    const edgecliPath = join(dir, '.edgecli', 'EDGECLI.md')
     if (existsSync(edgecliPath)) return edgecliPath
 
     const parent = dirname(dir)
