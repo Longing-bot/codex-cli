@@ -29,6 +29,7 @@ import { getMCPTools, initMCPServers } from '../mcp/index.js'
 import { autoCommit, trackAICommit, stageFile } from '../git/index.js'
 import { collectDebugContext, shouldAutoRetry, buildDebugFeedback, formatDebugSummary } from '../debug/index.js'
 import { recordCost, checkBudgetLimit, getDowngradedModel } from '../budget/index.js'
+import { routeModel, classifyTask, type TaskCategory } from '../router/index.js'
 
 // MCP 初始化标志
 let mcpInitialized = false
@@ -464,6 +465,16 @@ export async function runQuery(
         state.streamingResults.set(tc.id, promise)
       },
     } : undefined
+
+    // ─── 智能模型路由 ─────────────────────────────────────────────
+    // 根据用户消息 + 上一轮工具调用，自动选择最优模型
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || ''
+    const prevToolCalls = messages.filter(m => m.role === 'tool').slice(-2).map(m => m.tool_call_id || '')
+    const routedModel = routeModel(lastUserMsg)
+    if (routedModel && routedModel !== config.model) {
+      onText?.(`\n🔀 模型路由: ${config.model} → ${routedModel}\n`)
+      config.model = routedModel
+    }
 
     let response
     try {
