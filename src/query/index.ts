@@ -524,6 +524,18 @@ export async function runQuery(
         }
       }
 
+      // ─── Token Budget 强制继续（CC-inspired）─────────────────
+      // 模型想停，但还有预算？注入 nudge 强制继续
+      // 比 stop hooks 更底层：stop hooks 检查任务完成度，这里检查资源余额
+      if (state.totalToolRounds > 0) {
+        const budgetDecision = checkBudget(budget, messages)
+        if (budgetDecision.nudgeMessage && budgetDecision.action === 'continue') {
+          messages.push({ role: 'user', content: `[Token Budget] ${budgetDecision.nudgeMessage}` })
+          state.transition = { reason: 'next_turn', detail: 'token budget 强制继续' }
+          continue  // ← 还有预算，不让它停
+        }
+      }
+
       // 清理 SELF_CHECK_PASS 标记
       const cleanContent = response.content?.replace('SELF_CHECK_PASS', '').trim() || response.content
       messages.push({ role: 'assistant', content: cleanContent })
