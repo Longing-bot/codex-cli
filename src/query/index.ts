@@ -539,22 +539,22 @@ export async function runQuery(
         updateTaskStatus(state.taskId, 'completed')
       }
 
-      // Global Memory Extraction（任务完成后触发，CC-inspired）
+      // 后台记忆任务（CC fire-and-forget 模式，每个 turn 结束触发）
+      recordSession()  // 记录会话（extractMemories 和 auto-dream 共享计数）
+      
+      // Memory Extraction（24h + 5 sessions 触发）
       if (shouldExtractGlobalMemories(1)) {
         extractGlobalMemories(messages, async (msgs) => {
           const resp = await callLLM(msgs, [], config)
           return resp.content
-        }).catch(() => {})  // 静默失败
+        }).catch(() => {})
       }
-
-      // Auto-Dream 后台记忆整理（CC autoDream 风格，fire-and-forget）
-      recordSession()  // 记录会话
+      
+      // Auto-Dream 记忆整理（同样门控，不重复触发）
       if (shouldConsolidate()) {
         consolidateMemory().then(result => {
-          if (result.success) {
-            console.log(`[auto-dream] ${result.summary}`)
-          }
-        }).catch(() => {})  // 静默失败
+          if (result.success) console.log(`[auto-dream] ${result.summary}`)
+        }).catch(() => {})
       }
 
       state.transition = { reason: 'completed', detail: `共 ${state.totalToolRounds} 轮工具调用` }
